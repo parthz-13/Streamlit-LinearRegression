@@ -47,9 +47,13 @@ def run_gd(X, y, m0, b0, learning_rate, iterations):
         db = -2 / n * np.sum(y - y_pred)
         m_cur -= learning_rate * dm
         b_cur -= learning_rate * db
+        loss = compute_mse(X, y, m_cur, b_cur)
+        # Stop if values explode (divergence)
+        if not np.isfinite(loss) or loss > 1e8:
+            break
         ms.append(m_cur)
         bs.append(b_cur)
-        losses.append(compute_mse(X, y, m_cur, b_cur))
+        losses.append(loss)
     return np.array(ms), np.array(bs), np.array(losses)
 
 # Generate data once for this render
@@ -76,7 +80,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 with tab1:
     st.info("Move the **Slope (m)** and **Intercept (b)** sliders in the sidebar to fit the line to the data. Watch the MSE drop as you get closer to the true relationship (y = 2x + 1)!")
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(5, 3))
     ax.scatter(X, y, color="steelblue", alpha=0.7, label="Data points")
     ax.plot(X, m * X + b, color="red", linewidth=2, label=f"y = {m:.1f}x + {b:.1f}")
     ax.set_xlabel("X")
@@ -92,7 +96,7 @@ with tab1:
 with tab2:
     st.info("The **red dashed lines** are residuals — the vertical distance between each data point and the model's prediction. MSE averages the squares of all these distances.")
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(5, 3))
     y_pred = m * X + b
     ax.scatter(X, y, color="steelblue", alpha=0.7, zorder=3, label="Data points")
     ax.plot(X, y_pred, color="red", linewidth=2, label="Fitted line")
@@ -111,7 +115,7 @@ with tab2:
 with tab3:
     st.info("This contour map shows MSE for every combination of slope and intercept. The **red dot** marks your current (m, b). Move the sliders — the dot follows! The darker the region, the lower the loss.")
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(5, 3))
     cp = ax.contourf(M, B, Z, levels=30, cmap="viridis")
     plt.colorbar(cp, ax=ax, label="MSE")
     ax.scatter([m], [b], color="red", s=120, zorder=5, label=f"Current (m={m:.1f}, b={b:.1f})")
@@ -131,20 +135,25 @@ with tab4:
     col1, col2 = st.columns(2)
 
     with col1:
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize=(4, 3))
         ax.contourf(M, B, Z, levels=30, cmap="viridis", alpha=0.8)
-        ax.plot(ms_hist, bs_hist, color="white", linewidth=1.5, alpha=0.9, label="GD path")
-        ax.scatter([ms_hist[0]], [bs_hist[0]], color="yellow", s=80, zorder=5, label="Start")
-        ax.scatter([ms_hist[-1]], [bs_hist[-1]], color="red", s=80, zorder=5, label="End")
+        # Clip trajectory to contour bounds so it stays visible
+        ms_clipped = np.clip(ms_hist, -5, 5)
+        bs_clipped = np.clip(bs_hist, -10, 10)
+        ax.plot(ms_clipped, bs_clipped, color="white", linewidth=1.5, alpha=0.9, label="GD path")
+        ax.scatter([ms_clipped[0]], [bs_clipped[0]], color="yellow", s=80, zorder=5, label=f"Start ({ms_hist[0]:.1f}, {bs_hist[0]:.1f})")
+        ax.scatter([ms_clipped[-1]], [bs_clipped[-1]], color="red", s=80, zorder=5, label=f"End ({ms_hist[-1]:.2f}, {bs_hist[-1]:.2f})")
         ax.set_xlabel("Slope (m)")
         ax.set_ylabel("Intercept (b)")
         ax.set_title("Gradient Descent Trajectory")
-        ax.legend(fontsize=8)
+        ax.legend(fontsize=7)
         st.pyplot(fig)
         plt.close(fig)
+        if len(ms_hist) < n_iter:
+            st.warning(f"Diverged at step {len(ms_hist)} — try a smaller learning rate.")
 
     with col2:
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize=(4, 3))
         ax.plot(losses_hist, color="steelblue", linewidth=2)
         ax.set_xlabel("Iteration")
         ax.set_ylabel("MSE")
@@ -164,7 +173,7 @@ with tab5:
     colors = ["steelblue", "green", "orange", "red"]
     labels = ["0.001 — too slow", "0.01 — good", "0.05 — fast", "0.2 — risky"]
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(5, 3))
     for rate, color, label in zip(rates, colors, labels):
         _, _, losses_r = run_gd(X, y, 0.0, 0.0, rate, n_iter)
         # Clip extreme spikes so diverging runs don't collapse the y-axis
@@ -199,7 +208,7 @@ with tab6:
 
     with col1:
         st.subheader("Clean Data")
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=(4, 3))
         ax.scatter(X_clean, y_clean, color="steelblue", alpha=0.7)
         ax.plot(X_clean, m_clean * X_clean + b_clean, color="green", linewidth=2,
                 label=f"y = {m_clean:.2f}x + {b_clean:.2f}")
@@ -211,7 +220,7 @@ with tab6:
 
     with col2:
         st.subheader("Noisy Data with Outliers")
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=(4, 3))
         ax.scatter(X_noisy, y_noisy, color=point_colors, alpha=0.7)
         ax.plot(X_noisy, m_noisy * X_noisy + b_noisy, color="red", linewidth=2,
                 label=f"y = {m_noisy:.2f}x + {b_noisy:.2f}")
